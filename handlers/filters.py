@@ -1,5 +1,6 @@
 from flask_restful import Resource, reqparse
 import re
+from models.mongo import DBConnector
 
 from models.stubs import *
 
@@ -7,7 +8,8 @@ from models.stubs import *
 class RetrieveDateBracketsHandler(Resource):
     """Return the start and the end dates of all the books (the outer date boundaries)"""
     def get(self):
-        return DATE_BRACKETS_STUB
+        self.db_connector = DBConnector()
+        return self.db_connector.date_boundaries
 
 
 class BaseDateFilteredHandler(Resource):
@@ -17,6 +19,7 @@ class BaseDateFilteredHandler(Resource):
         """The constructor for this abstract class just creates an request parser
          that checks for the needed date brackets"""
         super().__init__()
+        self.db_connector = DBConnector()
         self.reqparse = reqparse.RequestParser()
         self.reqparse.add_argument("startdate", type=int)
         self.reqparse.add_argument("enddate", type=int)
@@ -26,8 +29,7 @@ class RetrieveAuthorsHandler(BaseDateFilteredHandler):
     def get(self):
         self.reqparse.add_argument("name_query", type=str, required=True)
         args = self.reqparse.parse_args()
-        return [ author for author in AUTHOR_LIST_STUB
-                 if re.search(args["name_query"], author["name"], re.IGNORECASE)]
+        return self.db_connector.get_authors_list(args["name_query"])
 
 class RetrieveGenresHandler(BaseDateFilteredHandler):
     """Returns the list of all authors available """

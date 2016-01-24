@@ -1,0 +1,3 @@
+Created text indexes using the following commands:
+
+db.authors.createIndex(_id : "text")

@@ -12,7 +12,7 @@ class RetrieveDashboardHandler(BaseMetadataFilterHandler):
     """Retrieves the dashboard data for a given collection"""
     def get(self):
         args = self.reqparse.parse_args()
-        return { k : v for k,v in args.items()}
+        return self.db_connector.compute_dashboard_stats()
 
 class RetrieveStatisticsHandler(BaseMetadataFilterHandler):
     """Returns the base statistics for a given collection"""

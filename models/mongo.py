@@ -23,7 +23,7 @@ class DBConnector(object):
     """Automatically connects when instantiated"""
 
     def __init__(self):
-        self.client = MongoClient() # connecting to the db
+        self.client = MongoClient(DB_ADDRESS) # connecting to the db
         self.epub_db = self.client['epub'] # opening a DB
 
     @cached("books_dates_list")
@@ -118,10 +118,12 @@ class DBConnector(object):
                      and books_date_dict[objectid] < args_dict["end_date"])]
 
 
-    def _compute_dashboard_stats(self, **kwargs):
+    def compute_dashboard_stats(self, **kwargs):
+        """Renders the message for the dashboard dada"""
         response = {}
 
-        args_dict = self._compute_book_filter()
+        # first, we send the kwargs to this method, which figures out the filters to use
+        args_dict = self._compute_book_filter(**kwargs)
         if args_dict is None:
             # first, we update the response according to the filter's parameters
             response.update({"nb_authors" : self.epub_db[AUTHORS_COLLECTION_NAME].count(),
@@ -135,3 +137,30 @@ class DBConnector(object):
                              "nb_genres" : 0 if args_dict["genre_id"] is None else 1,
                              "date_first_book" : args_dict["start_date"],
                              "date_last_book" : self._date_boundaries["end_date"]})
+
+            filtered_books_ids = self.get_filtered_book_set(args_dict)
+
+        word_counts_pipeline = [
+            {"$project" : { '_id' : 1, 'glossary_count' : { '$size' : "$glossary" }}},
+            { "$group" : { "_id" : 1,
+                           "vocab_total" : { "$sum" : "$glossary_count"},
+                           "avg_words" : { "$avg" : "$glossary_count"} }}
+        ]
+
+        total_words_pipeline = [
+            { "$unwind" : "$glossary"},
+            { "$group" : { "_id" : 1,
+                           "words_total" : { "$sum" : "$glossary.occ"}}}
+        ]
+
+        response["nb_books"] = self.epub_db.books.count()
+        vocab_query_result = next(self.epub_db.glossaries.aggregate(word_counts_pipeline))
+        word_query_result = next(self.epub_db.glossaries.aggregate(total_words_pipeline))
+        response["vocabulary_size"] = vocab_query_result["vocab_total"]
+        response["words_avg_per_book"] = vocab_query_result["avg_words"]
+        response["nb_words"] = word_query_result["words_total"]
+
+        return response
+
+
+

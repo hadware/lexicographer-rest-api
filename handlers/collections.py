@@ -1,11 +1,11 @@
 from .filters import BaseDateFilteredHandler
 
 class BaseMetadataFilterHandler(BaseDateFilteredHandler):
-    """This abstract handler ensures that there the """
+    """This abstract handler ensures that there the genre"""
     def __init__(self):
         super().__init__()
-        self.reqparse.add_argument("id_genre", type=int, required=True)
-        self.reqparse.add_argument("id_author", type=int, required=True)
+        self.reqparse.add_argument("id_genre", type=int)
+        self.reqparse.add_argument("id_author", type=int)
 
 
 class RetrieveDashboardHandler(BaseMetadataFilterHandler):

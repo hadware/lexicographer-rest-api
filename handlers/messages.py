@@ -4,7 +4,7 @@ from flask_restful import fields, marshal
 """
 
 author = {
-    'id': fields.String, # objectid in the DB
+    'id': fields.Integer, # ID set by the DB connector
     'name': fields.String, # actual name
 }
 

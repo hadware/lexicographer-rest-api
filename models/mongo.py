@@ -162,5 +162,26 @@ class DBConnector(object):
 
         return response
 
+    def compute_advanced_stats(self, **kwargs):
+        response = {"words" : {}, "sentences" : {}}
+
+        # first, we send the kwargs to this method, which figures out the filters to use
+        args_dict = self._compute_book_filter(**kwargs)
 
 
+        word_counts_pipeline = [
+            { "$group" : { "_id" : 1,
+                           "words_total" : { "$sum" : "$stats.nbrWord"},
+                           "words_avg_in_books" : {"$avg" : "$stats.nbrWord"},
+                           "words_avg_in_sentence" : {"$avg" : "$stats.nbrWordBySentence"}}}
+        ]
+
+
+
+        word_counts_query_result = next(self.epub_db.bookStats.aggregate(word_counts_pipeline))
+        response["words"] = {"count": word_counts_query_result["words_total"],
+                             "avg_in_sentence": int(word_counts_query_result["words_avg_in_sentence"]),
+                             "avg_in_books": int(word_counts_query_result["words_avg_in_books"])
+                             }
+
+        return response

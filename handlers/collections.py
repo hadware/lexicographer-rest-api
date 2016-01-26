@@ -1,4 +1,6 @@
 from .filters import BaseDateFilteredHandler
+from models.stubs import ADVANCED_STATS_STUB
+
 
 class BaseMetadataFilterHandler(BaseDateFilteredHandler):
     """This abstract handler ensures that there the genre"""
@@ -18,7 +20,7 @@ class RetrieveStatisticsHandler(BaseMetadataFilterHandler):
     """Returns the base statistics for a given collection"""
     def get(self):
         args = self.reqparse.parse_args()
-        return { k : v for k,v in args.items()}
+        return self.db_connector.compute_advanced_stats()
 
 class RetrieveWordcloudHandler(BaseDateFilteredHandler):
     """Return the wordcloud for a given collection"""

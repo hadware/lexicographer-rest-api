@@ -140,11 +140,16 @@ class DBConnector(object):
 
             filtered_books_ids = self.get_filtered_book_set(args_dict)
 
-        word_counts_pipeline = [
+        avg_words_pipeline = [
             {"$project" : { '_id' : 1, 'glossary_count' : { '$size' : "$glossary" }}},
             { "$group" : { "_id" : 1,
-                           "vocab_total" : { "$sum" : "$glossary_count"},
                            "avg_words" : { "$avg" : "$glossary_count"} }}
+        ]
+
+        vocab_count_pipeline = [
+            {"$unwind" : "$glossary"},
+            {"$group" : { "_id" : "$glossary.word" }},
+            { "$group" : { "_id" : 1, "vocab_total" : { "$sum" : 1}}}
         ]
 
         total_words_pipeline = [
@@ -154,10 +159,11 @@ class DBConnector(object):
         ]
 
         response["nb_books"] = self.epub_db.books.count()
-        vocab_query_result = next(self.epub_db.glossaries.aggregate(word_counts_pipeline))
+        avg_words_query_result = next(self.epub_db.glossaries.aggregate(avg_words_pipeline))
+        total_vocab_query_result = next(self.epub_db.glossaries.aggregate(vocab_count_pipeline))
         word_query_result = next(self.epub_db.glossaries.aggregate(total_words_pipeline))
-        response["vocabulary_size"] = vocab_query_result["vocab_total"]
-        response["words_avg_per_book"] = vocab_query_result["avg_words"]
+        response["vocabulary_size"] = total_vocab_query_result["vocab_total"]
+        response["words_avg_per_book"] = avg_words_query_result["avg_words"]
         response["nb_words"] = word_query_result["words_total"]
 
         return response
@@ -173,15 +179,33 @@ class DBConnector(object):
             { "$group" : { "_id" : 1,
                            "words_total" : { "$sum" : "$stats.nbrWord"},
                            "words_avg_in_books" : {"$avg" : "$stats.nbrWord"},
-                           "words_avg_in_sentence" : {"$avg" : "$stats.nbrWordBySentence"}}}
+                           "words_avg_in_sentence" : {"$avg" : "$stats.nbrWordBySentence"},
+                           "sentences_total" : { "$sum" : "$stats.nbrSentence"},
+                           "sentences_avg_in_book" : { "$avg" : "$stats.nbrSentence"}}}
         ]
-
-
 
         word_counts_query_result = next(self.epub_db.bookStats.aggregate(word_counts_pipeline))
         response["words"] = {"count": word_counts_query_result["words_total"],
                              "avg_in_sentence": int(word_counts_query_result["words_avg_in_sentence"]),
                              "avg_in_books": int(word_counts_query_result["words_avg_in_books"])
                              }
+        response["sentences"] = { "count" : int(word_counts_query_result["sentences_total"]),
+                                  "avg_in_books" : int(word_counts_query_result["sentences_avg_in_book"])}
 
         return response
+
+    def retrieve_word_cloud(self, **kwargs):
+        response = []
+
+        # first, we send the kwargs to this method, which figures out the filters to use
+        args_dict = self._compute_book_filter(**kwargs)
+
+        words_occ_pipeline = [
+            {"$unwind" : "$glossary"},
+            {"$group" : { "_id" : "$glossary.word" , "occ" : { "$sum" : "$glossary.occ"}}},
+            {"$sort" : {"occ" : -1}},
+            {"$limit" : 20}
+        ]
+
+        return { word["_id"]: word["occ"] for word in
+                 self.epub_db.glossaries.aggregate(words_occ_pipeline)}

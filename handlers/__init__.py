@@ -1,2 +1,3 @@
 from .filters import RetrieveAuthorsHandler, RetrieveDateBracketsHandler, RetrieveGenresHandler
 from .collections import RetrieveDashboardHandler, RetrieveStatisticsHandler, RetrieveWordcloudHandler
+from .semantic import RetrieveWordSemanticField

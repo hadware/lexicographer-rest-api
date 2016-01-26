@@ -25,4 +25,4 @@ class RetrieveStatisticsHandler(BaseMetadataFilterHandler):
 class RetrieveWordcloudHandler(BaseDateFilteredHandler):
     """Return the wordcloud for a given collection"""
     def get(self):
-        return {}
+        return self.db_connector.retrieve_word_cloud()

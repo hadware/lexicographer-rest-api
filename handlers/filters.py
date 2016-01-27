@@ -1,15 +1,11 @@
 from flask_restful import Resource, reqparse
-import re
 from models.mongo import DBConnector
-
-from models.stubs import *
-
 
 class RetrieveDateBracketsHandler(Resource):
     """Return the start and the end dates of all the books (the outer date boundaries)"""
     def get(self):
         self.db_connector = DBConnector()
-        return self.db_connector.date_boundaries
+        return self.db_connector.filtering_helper.date_boundaries
 
 
 class BaseDateFilteredHandler(Resource):
@@ -29,9 +25,9 @@ class RetrieveAuthorsHandler(BaseDateFilteredHandler):
     def get(self):
         self.reqparse.add_argument("name_query", type=str, required=True)
         args = self.reqparse.parse_args()
-        return self.db_connector.get_authors_list(args["name_query"])
+        return self.db_connector.filtering_helper.get_authors_list(args["name_query"])
 
 class RetrieveGenresHandler(BaseDateFilteredHandler):
     """Returns the list of all authors available """
     def get(self):
-        return {}
+        return self.db_connector.filtering_helper.get_genres_list()

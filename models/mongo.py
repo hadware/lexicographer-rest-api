@@ -1,12 +1,9 @@
 from math import floor, log
-from operator import itemgetter
 
 from scipy.spatial.distance import cosine
 
-__author__ = 'hadware'
-import re
-from os.path import isfile, join, dirname
-from datetime import date
+from models.config_db import AUTHORS_COLLECTION_NAME, BOOKS_COLLECTION_NAME, TOPICS_COLLECTION_NAME, \
+    GLOSSARIES_COLLECTION_NAME, BOOKSTATS_COLLECTION_NAME, DB_ADDRESS
 
 from pymongo import MongoClient
 from bson.objectid import ObjectId
@@ -15,26 +12,11 @@ from scipy.sparse import coo_matrix
 import numpy.linalg as LA
 
 from .cache import cached
-from .utils import Pipeline
-
-#DB constants (collection names, etc...)
-AUTHORS_COLLECTION_NAME = "authors"
-BOOKS_COLLECTION_NAME = "books"
-TOPICS_COLLECTION_NAME = "subjects"
-GLOSSARIES_COLLECTION_NAME = "glossaries"
-BOOKSTATS_COLLECTION_NAME = "bookStats"
-
-if isfile(join(dirname(__file__), "db_address.txt")):
-    with open(join(dirname(__file__), "db_address.txt")) as db_address_config_file:
-        DB_ADDRESS = db_address_config_file.read()
-else:
-    DB_ADDRESS = "mongodb://localhost:27017/"
+from .helpers import Pipeline, FilteringHelper
 
 class WordNotFound(Exception):
     pass
 
-def publication_datestring_to_date(datetestring):
-    return date(*map(int, datetestring.split("-")))
 
 class DBConnector(object):
     """Automatically connects when instantiated"""
@@ -47,134 +29,7 @@ class DBConnector(object):
         self.glossaries = self.epub_db[GLOSSARIES_COLLECTION_NAME]
         self.books = self.epub_db[BOOKS_COLLECTION_NAME]
         self.bookstats = self.epub_db[BOOKSTATS_COLLECTION_NAME]
-
-
-    @cached("books_dates_list")
-    def _retrieve_books_dates(self):
-        print("Fetching books dates")
-        books_dates = [ {"id" : book["_id"], "date" : publication_datestring_to_date(book["metadatas"]["dates"][0]) }
-                            for book in self.books.find({}, {"metadatas.dates" : 1})]
-        return sorted(books_dates, key=itemgetter("date"))
-
-    @cached("books_dates_dict")
-    def _retrieve_books_dates_dict(self):
-        return { entry["id"] : entry["date"] for entry in self._retrieve_books_dates()}
-
-    @property
-    def date_boundaries(self):
-        try:
-            return self._date_boundaries
-        except AttributeError:
-            self.books_dates = self._retrieve_books_dates()
-            self._date_boundaries = {"first_date" : str(self.books_dates[0]["date"]),
-                                     "last_date" : str(self.books_dates[-1]["date"])}
-            return self._date_boundaries
-
-    @cached("authors_list")
-    def _retrieve_authors(self):
-        return { i:  entry["_id"]
-                for i, entry
-                in enumerate(self.authors.find())}
-
-    @property
-    def cached_authors(self):
-        try :
-            return self._authors
-        except AttributeError:
-            self._authors = self._retrieve_authors()
-            return self._authors
-
-    def get_authors_list(self, query_str):
-        return [ {"id" : author_id, "name" : name} for author_id, name in self.cached_authors.items()
-                if re.search(query_str, name, re.IGNORECASE)]
-
-    def _compute_book_filter(self, **kwargs):
-
-        args_dict = {}
-        no_filter = True
-        # since the filters are all not very required, we have to test if the values are present, and if not,
-        # fall back to "default" values. There is also a "no_filters" flag. If it's not raised,
-        # it means there will be no filter at all, and the whole books database is used
-        if kwargs["start_date"] is not None:
-            args_dict["start_date"] = kwargs["start_date"]
-            no_filter = False
-        else :
-            args_dict["start_date"] = self.date_boundaries["first_date"]
-
-        if kwargs["end_date"] is not None:
-            args_dict["end_date"] = kwargs["end_date"]
-            no_filter = False
-        else:
-            args_dict["end_date"] = self.date_boundaries["last_date"]
-
-        if kwargs["author"] is not None:
-            args_dict["author_id"] = kwargs["author"]
-            no_filter = False
-        else :
-            args_dict["author_id"] = None
-
-        if kwargs["genre"] is not None:
-            args_dict["genre_id"] = kwargs["genre"]
-            no_filter = False
-        else :
-            args_dict["genre_id"] = None
-
-
-        return None if no_filter else args_dict
-
-    def get_filtered_book_set(self, args_dict=None):
-        """Retrieves the filtered book set's objectid for a non-None args_dict"""
-
-        #TODO: handle genre_id
-        if args_dict is None:
-            return None, None, None
-        else:
-            if args_dict["author_id"] is not None:
-                author_book_query = self.authors.find_one({"_id" : self.cached_authors[args_dict["author_id"]]})
-                books_objectid = author_book_query["idRef"] #only one element
-            else:
-                books_objectid = [ entry["_id"] for entry in self.books.find({}, {"_id" : 1})]
-
-            #retrieving the publication dates, and filtering out the ones that are before/after the date limits
-            # the dirty way for now, using the cached date dict
-            books_date_dict = self._retrieve_books_dates_dict()
-            ouput_booksid_list = []
-            min_date, max_date = None, None
-
-            for objectid in books_objectid:
-                if (books_date_dict[objectid] > publication_datestring_to_date(args_dict["start_date"])
-                         and books_date_dict[objectid] < publication_datestring_to_date(args_dict["end_date"])):
-                    ouput_booksid_list.append(objectid)
-                if min_date is None:
-                    max_date, min_date = books_date_dict[objectid], books_date_dict[objectid]
-                else:
-                    if max_date < books_date_dict[objectid]:
-                        max_date = books_date_dict[objectid]
-                    if min_date > books_date_dict[objectid]:
-                        min_date = books_date_dict[objectid]
-
-            return ouput_booksid_list, max_date, min_date
-
-    def _get_authors_counts_in_bookids(self, books_ids):
-        total_books_authors_ppln = [
-            {"$unwind" : "$idRef"},
-            {"$match" : { "idRef" : { "$in" : books_ids}}},
-            {"$group" : { "_id" : "$_id"}},
-            {"$group" : { "_id" : 1, "count" : {"$sum" : 1}}}
-        ]
-
-        return next(self.authors.aggregate(total_books_authors_ppln))["count"]
-
-
-    def _get_genres_counts_in_bookids(self, books_ids):
-        total_books_genres_ppln = [
-            {"$unwind" : "$idRef"},
-            {"$match" : { "idRef" : { "$in" : books_ids}}},
-            {"$group" : { "_id" : "$_id"}},
-            {"$group" : { "_id" : 1, "count" : {"$sum" : 1}}}
-        ]
-
-        return next(self.genres.aggregate(total_books_genres_ppln))["count"]
+        self.filtering_helper = FilteringHelper(self.epub_db)
 
 
     def compute_dashboard_stats(self, **kwargs):
@@ -182,21 +37,21 @@ class DBConnector(object):
         response = {}
 
         # first, we send the kwargs to this method, which figures out the filters to use
-        args_dict = self._compute_book_filter(**kwargs)
+        args_dict = self.filtering_helper.compute_book_filter(**kwargs)
         if args_dict is None:
             # first, we update the response according to the filter's parameters
             response.update({"nb_authors" : self.authors.count(),
                              "nb_genres" : self.genres.count(),
-                             "date_first_book" : self.date_boundaries["first_date"],
-                             "date_last_book" : self.date_boundaries["last_date"]})
+                             "date_first_book" : self.filtering_helper.date_boundaries["first_date"],
+                             "date_last_book" : self.filtering_helper.date_boundaries["last_date"]})
             filtered_books_ids = None
         else:
             # first, we update the response according to the filter's parameters
-            filtered_books_ids, max_date, min_date = self.get_filtered_book_set(args_dict)
+            filtered_books_ids, max_date, min_date = self.filtering_helper.get_filtered_book_set(args_dict)
             response.update({
-                "nb_authors" : self._get_authors_counts_in_bookids(filtered_books_ids)
+                "nb_authors" : self.filtering_helper.get_unique_count(self.authors, filtered_books_ids)
                                 if args_dict["author_id"] is None else 1,
-                "nb_genres" : self._get_genres_counts_in_bookids(filtered_books_ids)
+                "nb_genres" : self.filtering_helper.get_unique_count(self.genres, filtered_books_ids)
                                 if args_dict["genre_id"] is None else 1,
                 "date_first_book" : str(min_date),
                 "date_last_book" : str(max_date)
@@ -231,8 +86,8 @@ class DBConnector(object):
         response = {"words" : {}, "sentences" : {}}
 
         # first, we send the kwargs to this method, which figures out the filters to use
-        args_dict = self._compute_book_filter(**kwargs)
-        filtered_books_ids, max_date, min_date = self.get_filtered_book_set(args_dict)
+        args_dict = self.filtering_helper.compute_book_filter(**kwargs)
+        filtered_books_ids, max_date, min_date = self.filtering_helper.get_filtered_book_set(args_dict)
 
         #computes various statistics, moslty summing over the bookstats objects
         word_counts_ppln = Pipeline([
@@ -265,11 +120,10 @@ class DBConnector(object):
 
     def retrieve_word_cloud(self, **kwargs):
         """Retrieves the word cloud for a given book set"""
-        response = []
 
         # first, we send the kwargs to this method, which figures out the filters to use
-        args_dict = self._compute_book_filter(**kwargs)
-        filtered_books_ids, max_date, min_date = self.get_filtered_book_set(args_dict)
+        args_dict = self.filtering_helper.compute_book_filter(**kwargs)
+        filtered_books_ids, max_date, min_date = self.filtering_helper.get_filtered_book_set(args_dict)
 
         # unwinding the glossaries from the set, then grouping the elements by words, while summing the occurences
         # then, sorting it descrecendo, and getting only the 20 firsts
@@ -335,24 +189,25 @@ class DBConnector(object):
         """Retrieving the 5 words in the semantic field of a given word"""
 
         # first, we send the kwargs to this method, which figures out the filters to use
-        args_dict = self._compute_book_filter(**kwargs)
+        args_dict = self.filtering_helper.compute_book_filter(**kwargs)
 
         #then we build the book set (using they objectid's)
         if args_dict is None:
-            books_ids_list = [book["_id"] for book in self.books.find({}, {"_id" : 1})] #for now, for the full book list
+            books_ids_list = [book["_id"] for book in self.books.find({}, {"_id" : 1})]
         else:
-            books_ids_list, max_date, min_date = self.get_filtered_book_set(args_dict)
-
-        #first step : we gather the vocabulary for the given request
+            books_ids_list, max_date, min_date = self.filtering_helper.get_filtered_book_set(args_dict)
         books_count = len(books_ids_list)
         print("%i books used for analysis" % books_count)
         books_id_dict = { bookid : i for i, bookid in enumerate(books_ids_list)}
+
+        # then we gather the vocab for the given book
         vocab_dict, vocab_list = self._get_set_vocab(books_ids_list)
 
+        # checking if the vocabulary isn't empty
         if kwargs["word"] not in vocab_dict:
             raise WordNotFound()
 
-        #retrieving the glossaries for all concerned books
+        # then, retrieving the glossaries for all concerned books
         glossaries_dict = self._get_glossary_dict(books_ids_list)
 
         #retrieving the IDF table, which is a dictionary of the form { "word" : [ ObjectId's]}

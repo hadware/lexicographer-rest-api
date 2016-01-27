@@ -1,5 +1,6 @@
 from .filters import BaseDateFilteredHandler
-from models.stubs import ADVANCED_STATS_STUB
+from models.stubs import ADVANCED_STATS_STUB, ADVANCED_STATS_EMPTY_RESPONSE, DASHBOARD_STATS_EMPTY_RESPONSE
+from models.helpers import NoBookFound
 
 
 class BaseMetadataFilterHandler(BaseDateFilteredHandler):
@@ -14,16 +15,25 @@ class RetrieveDashboardHandler(BaseMetadataFilterHandler):
     """Retrieves the dashboard data for a given collection"""
     def get(self):
         args = self.reqparse.parse_args()
-        return self.db_connector.compute_dashboard_stats(**args)
+        try:
+            return self.db_connector.compute_dashboard_stats(**args)
+        except NoBookFound:
+            return DASHBOARD_STATS_EMPTY_RESPONSE
 
 class RetrieveStatisticsHandler(BaseMetadataFilterHandler):
     """Returns the base statistics for a given collection"""
     def get(self):
         args = self.reqparse.parse_args()
-        return self.db_connector.compute_advanced_stats(**args)
+        try:
+            return self.db_connector.compute_advanced_stats(**args)
+        except NoBookFound:
+            return ADVANCED_STATS_EMPTY_RESPONSE
 
 class RetrieveWordcloudHandler(BaseMetadataFilterHandler):
     """Return the wordcloud for a given collection"""
     def get(self):
         args = self.reqparse.parse_args()
-        return self.db_connector.retrieve_word_cloud(**args)
+        try:
+            return self.db_connector.retrieve_word_cloud(**args)
+        except NoBookFound:
+            return []

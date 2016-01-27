@@ -21,6 +21,8 @@ from .utils import Pipeline
 AUTHORS_COLLECTION_NAME = "authors"
 BOOKS_COLLECTION_NAME = "books"
 TOPICS_COLLECTION_NAME = "subjects"
+GLOSSARIES_COLLECTION_NAME = "glossaries"
+BOOKSTATS_COLLECTION_NAME = "bookStats"
 
 if isfile(join(dirname(__file__), "db_address.txt")):
     with open(join(dirname(__file__), "db_address.txt")) as db_address_config_file:
@@ -40,6 +42,11 @@ class DBConnector(object):
     def __init__(self):
         self.client = MongoClient(DB_ADDRESS) # connecting to the db
         self.epub_db = self.client['epub'] # opening a DB
+        self.genres = self.epub_db[TOPICS_COLLECTION_NAME]
+        self.glossaries = self.epub_db[GLOSSARIES_COLLECTION_NAME]
+        self.books = self.epub_db[BOOKS_COLLECTION_NAME]
+        self.bookstats = self.epub_db[BOOKSTATS_COLLECTION_NAME]
+
 
     @cached("books_dates_list")
     def _retrieve_books_dates(self):
@@ -125,7 +132,7 @@ class DBConnector(object):
                 author_book_query = self.epub_db[AUTHORS_COLLECTION_NAME].find_one({"_id" : self.authors[args_dict["author_id"]]})
                 books_objectid = author_book_query["idRef"] #only one element
             else:
-                books_objectid = [ entry["_id"] for entry in self.epub_db.books.find({}, {"_id" : 1})]
+                books_objectid = [ entry["_id"] for entry in self.books.find({}, {"_id" : 1})]
 
             #retrieving the publication dates, and filtering out the ones that are before/after the date limits
             # the dirty way for now, using the cached date dict
@@ -152,10 +159,22 @@ class DBConnector(object):
             {"$unwind" : "$idRef"},
             {"$match" : { "idRef" : { "$in" : books_ids}}},
             {"$group" : { "_id" : "$_id"}},
-            {"$group" : { "_id" : 1, "author_count" : {"$sum" : 1}}}
+            {"$group" : { "_id" : 1, "count" : {"$sum" : 1}}}
         ]
 
-        return next(self.epub_db.authors.aggregate(total_books_authors_ppln))["author_count"]
+        return next(self.epub_db.authors.aggregate(total_books_authors_ppln))["count"]
+
+
+    def _get_genres_counts_in_bookids(self, books_ids):
+        total_books_authors_ppln = [
+            {"$unwind" : "$idRef"},
+            {"$match" : { "idRef" : { "$in" : books_ids}}},
+            {"$group" : { "_id" : "$_id"}},
+            {"$group" : { "_id" : 1, "count" : {"$sum" : 1}}}
+        ]
+
+        return next(self.epub_db.genres.aggregate(total_books_authors_ppln))["count"]
+
 
     def compute_dashboard_stats(self, **kwargs):
         """Renders the message for the dashboard data"""
@@ -176,12 +195,11 @@ class DBConnector(object):
             response.update({
                 "nb_authors" : self._get_authors_counts_in_bookids(filtered_books_ids)
                                 if args_dict["author_id"] is None else 1,
-                "nb_genres" : 0 if args_dict["genre_id"] is None else 1,
+                "nb_genres" : self._get_genres_counts_in_bookids(filtered_books_ids)
+                                if args_dict["genre_id"] is None else 1,
                 "date_first_book" : str(min_date),
                 "date_last_book" : str(max_date)
             })
-
-
 
         vocab_count_ppln = Pipeline([
             {"$unwind" : "$glossary"},
@@ -195,9 +213,9 @@ class DBConnector(object):
                            "words_total" : { "$sum" : "$glossary.occ"}}}
         ], filtered_books_ids)
 
-        response["nb_books"] = self.epub_db.books.count() if filtered_books_ids is None else len(filtered_books_ids)
-        total_vocab_query_result = next(self.epub_db.glossaries.aggregate(vocab_count_ppln.pipeline))
-        word_query_result = next(self.epub_db.glossaries.aggregate(total_words_ppln.pipeline))
+        response["nb_books"] = self.books.count() if filtered_books_ids is None else len(filtered_books_ids)
+        total_vocab_query_result = next(self.glossaries.aggregate(vocab_count_ppln.pipeline))
+        word_query_result = next(self.glossaries.aggregate(total_words_ppln.pipeline))
         response["vocabulary_size"] = total_vocab_query_result["vocab_total"]
 
         # this is to display a "shortened" count for words, using "1235K" notation
@@ -232,8 +250,8 @@ class DBConnector(object):
                            "avg_words" : { "$avg" : "$glossary_count"} }}
         ], filtered_books_ids)
 
-        avg_words_query_result = next(self.epub_db.glossaries.aggregate(avg_words_ppln.pipeline))
-        word_counts_query_result = next(self.epub_db.bookStats.aggregate(word_counts_ppln.pipeline))
+        avg_words_query_result = next(self.glossaries.aggregate(avg_words_ppln.pipeline))
+        word_counts_query_result = next(self.bookstats.aggregate(word_counts_ppln.pipeline))
         response["words"] = {"count": word_counts_query_result["words_total"],
                              "avg_in_sentence": int(word_counts_query_result["words_avg_in_sentence"]),
                              "avg_in_books": int(word_counts_query_result["words_avg_in_books"]),
@@ -262,7 +280,7 @@ class DBConnector(object):
         ], filtered_books_ids)
 
         return { word["_id"]: word["occ"] for word in
-                 self.epub_db.glossaries.aggregate(words_occ_pipeline.pipeline)}
+                 self.glossaries.aggregate(words_occ_pipeline.pipeline)}
 
     @cached("full_glossary")
     def _get_full_glossary(self):
@@ -289,13 +307,14 @@ class DBConnector(object):
 
         vocab_dict = {}
         vocab_list = []
-        for i, entry in enumerate(self.epub_db.glossaries.aggregate(document_set_words)):
+        for i, entry in enumerate(self.glossaries.aggregate(document_set_words)):
             vocab_dict[entry["_id"]] = i
             vocab_list.append(entry["_id"])
         return vocab_dict, vocab_list
 
+
     def _get_glossary_dict(self, book_id_list):
-        glossaries_query_result = self.epub_db.glossaries.find({ "_id" : { "$in" : book_id_list}})
+        glossaries_query_result = self.glossaries.find({ "_id" : { "$in" : book_id_list}})
         glossaries_dict = {}
         for glossary in glossaries_query_result:
             glossaries_dict[glossary["_id"]] = {entry["word"] : entry["occ"] for entry in glossary["glossary"]}
@@ -319,7 +338,7 @@ class DBConnector(object):
 
         #then we build the book set (using they objectid's)
         if args_dict is None:
-            books_ids_list = [book["_id"] for book in self.epub_db.books.find({}, {"_id" : 1})] #for now, for the full book list
+            books_ids_list = [book["_id"] for book in self.books.find({}, {"_id" : 1})] #for now, for the full book list
         else:
             books_ids_list, max_date, min_date = self.get_filtered_book_set(args_dict)
 

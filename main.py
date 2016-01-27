@@ -16,8 +16,8 @@ api.add_resource(RetrieveAuthorsHandler, '/api/authors')
 #retrieving data for a given collection
 api.add_resource(RetrieveDashboardHandler, '/api/dashboard')
 api.add_resource(RetrieveStatisticsHandler, '/api/statistics')
-api.add_resource(RetrieveWordcloudHandler, '/api/wordcloud')
-api.add_resource(RetrieveWordSemanticField, '/api/semanticfield')
+api.add_resource(RetrieveWordcloudHandler, '/api/word-cloud')
+api.add_resource(RetrieveWordSemanticField, '/api/words')
 
 
 if __name__ == '__main__':

@@ -1,4 +1,5 @@
 from .collections import BaseMetadataFilterHandler
+from models.mongo import WordNotFound
 
 
 class RetrieveMatchingWordsList(BaseMetadataFilterHandler):
@@ -24,6 +25,9 @@ class RetrieveWordSemanticField(BaseMetadataFilterHandler):
         args = self.reqparse.parse_args()
 
         if self.db_connector.check_if_word_exists(args["word"]):
-            return self.db_connector.retrieve_semantic_field(**args)
+            try:
+                return self.db_connector.retrieve_semantic_field(**args)
+            except WordNotFound:
+                return {}
         else:
             return {}

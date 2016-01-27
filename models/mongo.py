@@ -42,7 +42,7 @@ class DBConnector(object):
 
     @cached("books_dates_list")
     def _retrieve_books_dates(self):
-        print("Fecthing books dates")
+        print("Fetching books dates")
         books_dates = [ {"id" : book["_id"], "date" : publication_datestring_to_date(book["metadatas"]["dates"][0]) }
                             for book in self.epub_db[BOOKS_COLLECTION_NAME].find({}, {"metadatas.dates" : 1})]
         return sorted(books_dates, key=itemgetter("date"))
@@ -299,15 +299,19 @@ class DBConnector(object):
 
     def retrieve_semantic_field(self, **kwargs):
         """Retrieving the 5 words in the semantic field of a given word"""
-        response = []
 
         # first, we send the kwargs to this method, which figures out the filters to use
         args_dict = self._compute_book_filter(**kwargs)
 
-        #first step : we gather the vocabulary for the given request
-        books_ids_list = [book["_id"] for book in self.epub_db.books.find({}, {"_id" : 1})] #for now, for the full book list
+        #then we build the book set (using they objectid's)
+        if args_dict is None:
+            books_ids_list = [book["_id"] for book in self.epub_db.books.find({}, {"_id" : 1})] #for now, for the full book list
+        else:
+            books_ids_list, max_date, min_date = self.get_filtered_book_set(args_dict)
 
+        #first step : we gather the vocabulary for the given request
         books_count = len(books_ids_list)
+        print("%i books used for analysis" % books_count)
         books_id_dict = { bookid : i for i, bookid in enumerate(books_ids_list)}
         vocab_dict, vocab_list = self._get_set_vocab(books_ids_list)
 
@@ -317,7 +321,7 @@ class DBConnector(object):
         #retrieving the glossaries for all concerned books
         glossaries_dict = self._get_glossary_dict(books_ids_list)
 
-        #retrieving the IDF table, which is a dictiontionary of the form { "word" : [ ObjectId's]}
+        #retrieving the IDF table, which is a dictionary of the form { "word" : [ ObjectId's]}
         idf_table = self._get_idf(books_ids_list)
 
         #computing three lists to build a sparse matrix: colmun, row and the computed tfidf

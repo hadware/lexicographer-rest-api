@@ -256,7 +256,7 @@ class DBConnector(object):
         vocab_list = []
         for i, entry in enumerate(self.epub_db.glossaries.aggregate(document_set_words)):
             vocab_dict[entry["_id"]] = i
-            vocab_list.append(entry)
+            vocab_list.append(entry["_id"])
         return vocab_dict, vocab_list
 
     def _get_glossary_dict(self, book_id_list):
@@ -312,10 +312,11 @@ class DBConnector(object):
 
         tfidf_matrix = coo_matrix((tfidf, (row, column)), shape=(len(vocab_dict), books_count))
         print(tfidf_matrix.shape)
+        tfidf_matrix = tfidf_matrix.todense()
 
         print("Done computing tfidf table")
 
-        query_word_row = tfidf_matrix.getrow(vocab_dict[kwargs["query"]]).todense()
+        query_word_row = tfidf_matrix[vocab_dict[kwargs["query"]]]
         query_word_norm = LA.norm(query_word_row)
         ESA_results = []
         for word in vocab_dict:
@@ -331,11 +332,11 @@ class DBConnector(object):
             #                         query_word_norm
             #                     )).item(0)
             #                    )
-            ESA_results.append(cosine(query_word_row, tfidf_matrix.getrow(vocab_dict[word]).todense()))
+            ESA_results.append(cosine(query_word_row, tfidf_matrix[vocab_dict[word]]))
 
         print("Finished computing the scalar products")
         # casting the results to array, then, finding the 10 biggest coefficients
         ESA_results_array = np.array(ESA_results)
-        biggest_elements_indices = np.argpartition(ESA_results_array, -5)[-5:]
+        closest_elements_indices = ESA_results_array.argsort()[:5]
 
-        return [vocab_list[i] for i in biggest_elements_indices]
+        return [vocab_list[i] for i in closest_elements_indices]

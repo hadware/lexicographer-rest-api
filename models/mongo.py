@@ -43,6 +43,7 @@ class DBConnector(object):
         self.client = MongoClient(DB_ADDRESS) # connecting to the db
         self.epub_db = self.client['epub'] # opening a DB
         self.genres = self.epub_db[TOPICS_COLLECTION_NAME]
+        self.authors = self.epub_db[AUTHORS_COLLECTION_NAME]
         self.glossaries = self.epub_db[GLOSSARIES_COLLECTION_NAME]
         self.books = self.epub_db[BOOKS_COLLECTION_NAME]
         self.bookstats = self.epub_db[BOOKSTATS_COLLECTION_NAME]
@@ -52,7 +53,7 @@ class DBConnector(object):
     def _retrieve_books_dates(self):
         print("Fetching books dates")
         books_dates = [ {"id" : book["_id"], "date" : publication_datestring_to_date(book["metadatas"]["dates"][0]) }
-                            for book in self.epub_db[BOOKS_COLLECTION_NAME].find({}, {"metadatas.dates" : 1})]
+                            for book in self.books.find({}, {"metadatas.dates" : 1})]
         return sorted(books_dates, key=itemgetter("date"))
 
     @cached("books_dates_dict")
@@ -73,10 +74,10 @@ class DBConnector(object):
     def _retrieve_authors(self):
         return { i:  entry["_id"]
                 for i, entry
-                in enumerate(self.epub_db[AUTHORS_COLLECTION_NAME].find())}
+                in enumerate(self.authors.find())}
 
     @property
-    def authors(self):
+    def cached_authors(self):
         try :
             return self._authors
         except AttributeError:
@@ -84,7 +85,7 @@ class DBConnector(object):
             return self._authors
 
     def get_authors_list(self, query_str):
-        return [ {"id" : author_id, "name" : name} for author_id, name in self.authors.items()
+        return [ {"id" : author_id, "name" : name} for author_id, name in self.cached_authors.items()
                 if re.search(query_str, name, re.IGNORECASE)]
 
     def _compute_book_filter(self, **kwargs):
@@ -129,7 +130,7 @@ class DBConnector(object):
             return None, None, None
         else:
             if args_dict["author_id"] is not None:
-                author_book_query = self.epub_db[AUTHORS_COLLECTION_NAME].find_one({"_id" : self.authors[args_dict["author_id"]]})
+                author_book_query = self.authors.find_one({"_id" : self.cached_authors[args_dict["author_id"]]})
                 books_objectid = author_book_query["idRef"] #only one element
             else:
                 books_objectid = [ entry["_id"] for entry in self.books.find({}, {"_id" : 1})]
@@ -162,18 +163,18 @@ class DBConnector(object):
             {"$group" : { "_id" : 1, "count" : {"$sum" : 1}}}
         ]
 
-        return next(self.epub_db.authors.aggregate(total_books_authors_ppln))["count"]
+        return next(self.authors.aggregate(total_books_authors_ppln))["count"]
 
 
     def _get_genres_counts_in_bookids(self, books_ids):
-        total_books_authors_ppln = [
+        total_books_genres_ppln = [
             {"$unwind" : "$idRef"},
             {"$match" : { "idRef" : { "$in" : books_ids}}},
             {"$group" : { "_id" : "$_id"}},
             {"$group" : { "_id" : 1, "count" : {"$sum" : 1}}}
         ]
 
-        return next(self.epub_db.genres.aggregate(total_books_authors_ppln))["count"]
+        return next(self.genres.aggregate(total_books_genres_ppln))["count"]
 
 
     def compute_dashboard_stats(self, **kwargs):
@@ -184,8 +185,8 @@ class DBConnector(object):
         args_dict = self._compute_book_filter(**kwargs)
         if args_dict is None:
             # first, we update the response according to the filter's parameters
-            response.update({"nb_authors" : self.epub_db[AUTHORS_COLLECTION_NAME].count(),
-                             "nb_genres" : self.epub_db[TOPICS_COLLECTION_NAME].count(),
+            response.update({"nb_authors" : self.authors.count(),
+                             "nb_genres" : self.genres.count(),
                              "date_first_book" : self.date_boundaries["first_date"],
                              "date_last_book" : self.date_boundaries["last_date"]})
             filtered_books_ids = None

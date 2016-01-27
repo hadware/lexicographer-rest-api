@@ -21,8 +21,8 @@ class BaseDateFilteredHandler(Resource):
         super().__init__()
         self.db_connector = DBConnector()
         self.reqparse = reqparse.RequestParser()
-        self.reqparse.add_argument("startdate", type=int)
-        self.reqparse.add_argument("enddate", type=int)
+        self.reqparse.add_argument("start_date", type=str)
+        self.reqparse.add_argument("end_date", type=str)
 
 class RetrieveAuthorsHandler(BaseDateFilteredHandler):
     """Returns the list of all genres available"""

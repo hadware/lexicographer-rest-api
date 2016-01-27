@@ -1,10 +1,11 @@
 from math import floor, log
 from operator import itemgetter
+
 from scipy.spatial.distance import cosine
 
 __author__ = 'hadware'
 import re
-from os.path import abspath, isfile, join, dirname
+from os.path import isfile, join, dirname
 from datetime import date
 
 from pymongo import MongoClient
@@ -86,14 +87,14 @@ class DBConnector(object):
         # since the filters are all not very required, we have to test if the values are present, and if not,
         # fall back to "default" values. There is also a "no_filters" flag. If it's not raised,
         # it means there will be no filter at all, and the whole books database is used
-        if kwargs["startdate"] is not None:
-            args_dict["start_date"] = kwargs["startdate"]
+        if kwargs["start_date"] is not None:
+            args_dict["start_date"] = kwargs["start_date"]
             no_filter = False
         else :
             args_dict["start_date"] = self.date_boundaries["first_date"]
 
-        if kwargs["enddate"] is not None:
-            args_dict["end_date"] = kwargs["enddate"]
+        if kwargs["end_date"] is not None:
+            args_dict["end_date"] = kwargs["end_date"]
             no_filter = False
         else:
             args_dict["end_date"] = self.date_boundaries["last_date"]
@@ -146,6 +147,16 @@ class DBConnector(object):
 
             return ouput_booksid_list, max_date, min_date
 
+    def _get_authors_counts_in_bookids(self, books_ids):
+        total_books_authors_ppln = [
+            {"$unwind" : "$idRef"},
+            {"$match" : { "idRef" : { "$in" : books_ids}}},
+            {"$group" : { "_id" : "$_id"}},
+            {"$group" : { "_id" : 1, "author_count" : {"$sum" : 1}}}
+        ]
+
+        return next(self.epub_db.authors.aggregate(total_books_authors_ppln))["author_count"]
+
     def compute_dashboard_stats(self, **kwargs):
         """Renders the message for the dashboard data"""
         response = {}
@@ -162,10 +173,13 @@ class DBConnector(object):
         else:
             # first, we update the response according to the filter's parameters
             filtered_books_ids, max_date, min_date = self.get_filtered_book_set(args_dict)
-            response.update({"nb_authors" : 0 if args_dict["author_id"] is None else 1,
-                             "nb_genres" : 0 if args_dict["genre_id"] is None else 1,
-                             "date_first_book" : str(min_date),
-                             "date_last_book" : str(max_date)})
+            response.update({
+                "nb_authors" : self._get_authors_counts_in_bookids(filtered_books_ids)
+                                if args_dict["author_id"] is None else 1,
+                "nb_genres" : 0 if args_dict["genre_id"] is None else 1,
+                "date_first_book" : str(min_date),
+                "date_last_book" : str(max_date)
+            })
 
 
 

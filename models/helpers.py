@@ -13,6 +13,9 @@ class Pipeline(object):
         if books_ids is not None:
             self.pipeline.insert(0, {"$match" : { "_id" : { "$in" : books_ids}}})
 
+class NoBookFound(Exception):
+    pass
+
 def publication_datestring_to_date(datetestring):
     return date(*map(int, datetestring.split("-")))
 
@@ -181,5 +184,3 @@ class FilteringHelper(object):
         return next(collection.aggregate(metadata_count_pipeline))["count"]
 
 
-class NoBookFound(Exception):
-    pass

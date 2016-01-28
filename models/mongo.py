@@ -251,5 +251,6 @@ class DBConnector(object):
         # casting the results to array, then, finding the 10 biggest coefficients
         ESA_results_array = np.array(ESA_results)
         closest_elements_indices = ESA_results_array.argsort()[:5]
-
+        print("Finished sorting results")
+        
         return [vocab_list[i] for i in closest_elements_indices]

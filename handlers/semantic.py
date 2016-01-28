@@ -1,9 +1,11 @@
 from .collections import BaseMetadataFilterHandler
 from models.mongo import WordNotFound
-
+from .filters import failsafe
 
 class RetrieveMatchingWordsList(BaseMetadataFilterHandler):
+    """Retrieves a list of words matching the given query"""
 
+    @failsafe
     def get(self):
         self.reqparse.add_argument("query", type=str, required=True)
         args = self.reqparse.parse_args()
@@ -19,7 +21,9 @@ class RetrieveMatchingWordsList(BaseMetadataFilterHandler):
 
 
 class RetrieveWordSemanticField(BaseMetadataFilterHandler):
+    """Retrieves the semantic field of 5 words for a given query"""
 
+    @failsafe
     def get(self):
         self.reqparse.add_argument("word", type=str, required=True)
         args = self.reqparse.parse_args()

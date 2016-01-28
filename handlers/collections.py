@@ -1,7 +1,7 @@
 from .filters import BaseDateFilteredHandler
 from models.stubs import ADVANCED_STATS_STUB, ADVANCED_STATS_EMPTY_RESPONSE, DASHBOARD_STATS_EMPTY_RESPONSE
 from models.helpers import NoBookFound
-
+from .filters import failsafe
 
 class BaseMetadataFilterHandler(BaseDateFilteredHandler):
     """This abstract handler ensures that there the genre"""
@@ -13,6 +13,7 @@ class BaseMetadataFilterHandler(BaseDateFilteredHandler):
 
 class RetrieveDashboardHandler(BaseMetadataFilterHandler):
     """Retrieves the dashboard data for a given collection"""
+    @failsafe
     def get(self):
         args = self.reqparse.parse_args()
         try:
@@ -22,6 +23,7 @@ class RetrieveDashboardHandler(BaseMetadataFilterHandler):
 
 class RetrieveStatisticsHandler(BaseMetadataFilterHandler):
     """Returns the base statistics for a given collection"""
+    @failsafe
     def get(self):
         args = self.reqparse.parse_args()
         try:
@@ -31,6 +33,7 @@ class RetrieveStatisticsHandler(BaseMetadataFilterHandler):
 
 class RetrieveWordcloudHandler(BaseMetadataFilterHandler):
     """Return the wordcloud for a given collection"""
+    @failsafe
     def get(self):
         args = self.reqparse.parse_args()
         try:

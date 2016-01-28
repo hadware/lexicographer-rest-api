@@ -1,18 +1,18 @@
 from math import floor, log
 
 from scipy.spatial.distance import cosine
-
-from models.config_db import AUTHORS_COLLECTION_NAME, BOOKS_COLLECTION_NAME, TOPICS_COLLECTION_NAME, \
-    GLOSSARIES_COLLECTION_NAME, BOOKSTATS_COLLECTION_NAME, DB_ADDRESS
-
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 import numpy as np
 from scipy.sparse import coo_matrix
 import numpy.linalg as LA
 
-from .cache import cached
-from .helpers import Pipeline, FilteringHelper
+from .caching import cached
+from .filtering import Pipeline, FilteringHelper
+from .config_db import AUTHORS_COLLECTION_NAME, BOOKS_COLLECTION_NAME, TOPICS_COLLECTION_NAME, \
+    GLOSSARIES_COLLECTION_NAME, BOOKSTATS_COLLECTION_NAME, DB_ADDRESS
+from .esa import ESAHelper
+
 
 class WordNotFound(Exception):
     pass
@@ -29,7 +29,10 @@ class DBConnector(object):
         self.glossaries = self.epub_db[GLOSSARIES_COLLECTION_NAME]
         self.books = self.epub_db[BOOKS_COLLECTION_NAME]
         self.bookstats = self.epub_db[BOOKSTATS_COLLECTION_NAME]
+
+        # declaring helpers
         self.filtering_helper = FilteringHelper(self.epub_db)
+        self.esa_helper = ESAHelper
 
 
     def compute_dashboard_stats(self, **kwargs):

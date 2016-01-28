@@ -3,7 +3,7 @@ import re
 
 from .config_db import AUTHORS_COLLECTION_NAME, BOOKS_COLLECTION_NAME, TOPICS_COLLECTION_NAME, GLOSSARIES_COLLECTION_NAME
 from operator import itemgetter
-from .cache import cached
+from .caching import cached
 
 
 class Pipeline(object):
@@ -155,8 +155,8 @@ class FilteringHelper(object):
 
             # we're also taking advantage of the date tests to figure out the date brackets for all books
             for objectid in books_objectid:
-                if (books_date_dict[objectid] > publication_datestring_to_date(args_dict["start_date"])
-                         and books_date_dict[objectid] < publication_datestring_to_date(args_dict["end_date"])):
+                if (books_date_dict[objectid] >= publication_datestring_to_date(args_dict["start_date"])
+                         and books_date_dict[objectid] <= publication_datestring_to_date(args_dict["end_date"])):
                     ouput_booksid_list.append(objectid)
                 if min_date is None:
                     max_date, min_date = books_date_dict[objectid], books_date_dict[objectid]

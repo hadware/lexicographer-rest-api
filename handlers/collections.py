@@ -1,6 +1,6 @@
 from .filters import BaseDateFilteredHandler
 from models.stubs import ADVANCED_STATS_STUB, ADVANCED_STATS_EMPTY_RESPONSE, DASHBOARD_STATS_EMPTY_RESPONSE
-from models.helpers import NoBookFound
+from models.filtering import NoBookFound
 from .filters import failsafe
 
 class BaseMetadataFilterHandler(BaseDateFilteredHandler):
